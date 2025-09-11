@@ -1,39 +1,55 @@
-﻿using System.Reactive.Linq;
-using System.Reactive.Subjects;
-using System.Text.Json;
-using MuThr.DataModels.BuildActions;
+﻿using MuThr.DataModels.BuildActions;
+using MuThr.Sdk;
 
-Console.WriteLine("hello world");
-
-Subject<int> sub = new();
-IObservable<int> subObv = sub;
-
-subObv.Subscribe(Console.WriteLine);
-subObv.Subscribe(Console.WriteLine);
-
-for (int i = 0; i < 10; i++)
+internal class Program
 {
-    sub.OnNext(i);
+    private static async Task Main(string[] _)
+    {
+        BuildAction rootAction = new CommandBuildAction()
+        {
+            ChildTasks = [
+                new CommandBuildAction()
+                {
+                    Process = "echo",
+                    Arguments = ["hello"]
+                },
+                new CommandBuildAction()
+                {
+                    Process = "echo",
+                    Arguments = ["world"]
+                },
+                new CommandBuildAction()
+                {
+                    Process = "echo",
+                    Arguments = ["111"]
+                }
+            ],
+            Process = "cat",
+            Arguments = [
+                "#0",
+                "#1"
+            ]
+        };
+
+        Coordinator coord = new(rootAction, System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
+        BuildResult result = await coord.WaitAsync().ConfigureAwait(false);
+
+        string outputPath = result.OutputPath;
+
+        try
+        {
+            using StreamReader fs = new(outputPath);
+            string content = await fs.ReadToEndAsync().ConfigureAwait(false);
+            Console.Write('`');
+            Console.Write(content);
+            Console.WriteLine('`');
+        }
+        finally
+        {
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+            }
+        }
+    }
 }
-
-// //lang=json
-// string actionSrc = """
-// {
-//     "$type": "command",
-//     "ChildTasks": [
-//         {
-//             "$type": "command",
-//             "Process": "echo",
-//             "Arguments": ["hello world \n 111"]
-//         }
-//     ],
-//     "Process": "grep",
-//     "Arguments": [
-//         "hello"
-//     ]
-// }
-// """;
-
-// BuildAction? action = JsonSerializer.Deserialize<BuildAction>(actionSrc);
-
-// Console.WriteLine(JsonSerializer.Serialize(action));

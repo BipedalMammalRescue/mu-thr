@@ -1,22 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../MuThr.DataModels/MuThr.DataModels.csproj" />
-    <ProjectReference Include="../MuThr.Sdk/MuThr.Sdk.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="System.Linq" Version="4.3.0" />
     <PackageReference Include="System.Linq.Async" Version="6.0.3" />
     <PackageReference Include="System.Reactive" Version="6.0.2" />
     <PackageReference Include="System.Reactive.Linq" Version="6.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../MuThr.DataModels/MuThr.DataModels.csproj" />
   </ItemGroup>
 
 </Project>

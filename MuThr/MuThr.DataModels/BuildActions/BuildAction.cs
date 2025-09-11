@@ -71,7 +71,6 @@ public abstract class BuildAction
             outputPath = nextOutputPath;
         }
 
-
         // clean up
         foreach (string tempFile in tempFilesUsed)
         {

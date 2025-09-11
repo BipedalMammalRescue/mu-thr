@@ -5,13 +5,13 @@ using System.Reactive.Subjects;
 using System.Reactive.Threading.Tasks;
 using MuThr.DataModels.BuildActions;
 
-namespace Muthr.Behavior;
+namespace MuThr.Sdk;
 
 public class Coordinator
 {
     private record BuildTask
     (
-        Guid? Parent,
+        BuildTask? Parent,
         Guid Id,
         int ParentalRelation,
         ImmutableDictionary<string, string> Source,
@@ -28,7 +28,7 @@ public class Coordinator
 
     private record TaskResult(BuildTask Task, BuildResult Result);
 
-    private static long BuildMask(int length) => (2 << length) - 1;
+    private static long BuildMask(int length) => (1 << length) - 1;
     private static long BuildFlag(int index) => 1 << index;
 
     private readonly Subject<BuildTask> _scheduleInput = new();
@@ -38,6 +38,12 @@ public class Coordinator
 
     public Coordinator(BuildAction rootAction, ImmutableDictionary<string, string> source)
     {
+        _readyQueue.Subscribe(rdy =>
+        {
+            Console.Write("ready: ");
+            Console.WriteLine(rdy.Task.Id);
+        });
+
         // funnel leaf tasks into the ready queue immediately 
         _scheduleInput
             .Where(task => task.Action.ChildTasks.Length <= 0)
@@ -58,34 +64,51 @@ public class Coordinator
 
                 // send the children back to scheduler
                 return task.Action.ChildTasks
-                    .Select((child, index) => new BuildTask(task.Id, Guid.NewGuid(), index, task.Source, child));
+                    .Select((child, index) => new BuildTask(task, Guid.NewGuid(), index, task.Source, child));
             })
             .Subscribe(_scheduleInput);
 
         // construct the queue of results, where individual tasks are constucted asynchronously
-        _results = Observable.Merge(_readyQueue.Select(task => Task.Run(async () =>
+        _results = Observable.Merge(_readyQueue.Distinct(ready => ready.Task.Id).Select(ready => Task.Run(async () =>
         {
+            Console.Write("begin: ");
+            Console.WriteLine(ready.Task.Id);
+
             // early termination: if there are errored children, bubble up the error
-            IEnumerable<string> childErrors = task.Children.SelectMany(c => c.Errors);
+            IEnumerable<string> childErrors = ready.Children.SelectMany(c => c.Errors);
             if (childErrors.Any())
-                return new TaskResult(task.Task, new BuildResult() { Errors = [.. childErrors] });
+                return new TaskResult(ready.Task, new BuildResult() { Errors = [.. childErrors] });
 
             // normal code path
-            BuildEnvironment env = new(task.Task.Source, task.Children);
-            BuildResult result = await task.Task.Action.ExecuteAsync(env).ConfigureAwait(false);
-            return new TaskResult(task.Task, result);
-        }).ToObservable()));
+            BuildEnvironment env = new(ready.Task.Source, ready.Children);
+            BuildResult result = await ready.Task.Action.ExecuteAsync(env).ConfigureAwait(false);
+
+            // clean up
+            foreach (BuildResult usedResult in ready.Children)
+            {
+                if (File.Exists(usedResult.OutputPath))
+                {
+                    File.Delete(usedResult.OutputPath);
+                }
+            }
+
+            Console.Write("end: ");
+            Console.WriteLine(ready.Task.Id);
+
+            return new TaskResult(ready.Task, result);
+        }).ToObservable())).Publish().AutoConnect().TakeUntil(x => x.Task.Parent == null);
 
         // funnel results back into continuation
         _results.Where(result => result.Task.Parent != null).SelectMany<TaskResult, Continuation>(result =>
         {
-            if (!_continuations.TryRemove(result.Task.Parent!.Value, out Continuation? cont))
-                return [];
-
             // update continuations
             Continuation candidate = _continuations.AddOrUpdate(
-                result.Task.Parent!.Value,
-                _ => throw new Exception("child returns before cotinuation is created"),
+                result.Task.Parent!.Id,
+                _ => new Continuation(
+                    default!,
+                    ImmutableArray<BuildResult>.Empty.AddRange(new BuildResult[result.Task.Parent.Action.ChildTasks.Length]).SetItem(result.Task.ParentalRelation, result.Result),
+                    BuildMask(result.Task.Parent.Action.ChildTasks.Length),
+                    BuildFlag(result.Task.ParentalRelation)),
                 (oldId, oldCont) =>
                 {
                     return oldCont with
@@ -96,7 +119,12 @@ public class Coordinator
                 });
 
             // emit when a new task is ready
-            return candidate.CurrentMap != candidate.TargetMap ? [] : [candidate];
+            if (candidate.CurrentMap == candidate.TargetMap)
+            {
+                Console.WriteLine("triggering parent");
+            }
+
+            return (candidate.CurrentMap & candidate.TargetMap) == candidate.TargetMap ? [candidate] : [];
         }).Select(cont => (cont.Task, cont.Children)).Subscribe(_readyQueue);
 
         // register the first task

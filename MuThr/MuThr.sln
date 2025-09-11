@@ -7,13 +7,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MuThr", "MuThr\MuThr.csproj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MuThr.DataModels", "MuThr.DataModels\MuThr.DataModels.csproj", "{53DB00DB-44BF-48BA-8ED6-86AAACEAAA26}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MuThr.Sdk", "MuThr.Sdk\MuThr.Sdk.csproj", "{78562B71-C97D-4D8A-B487-1F549B89CF59}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{1FEE8B69-895A-4EB7-9861-AAABB0035BC0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -24,5 +23,12 @@ Global
 		{53DB00DB-44BF-48BA-8ED6-86AAACEAAA26}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{53DB00DB-44BF-48BA-8ED6-86AAACEAAA26}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{53DB00DB-44BF-48BA-8ED6-86AAACEAAA26}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78562B71-C97D-4D8A-B487-1F549B89CF59}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78562B71-C97D-4D8A-B487-1F549B89CF59}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78562B71-C97D-4D8A-B487-1F549B89CF59}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78562B71-C97D-4D8A-B487-1F549B89CF59}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal
