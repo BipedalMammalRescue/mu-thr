@@ -31,7 +31,7 @@ public class Coordinator
     private static long BuildMask(int length) => (1 << length) - 1;
     private static long BuildFlag(int index) => 1 << index;
 
-    private readonly Subject<BuildTask> _scheduleInput = new();
+    private readonly Subject<BuildTask> _scheduleQueue = new();
     private readonly Subject<(BuildTask Task, ImmutableArray<BuildResult> Children)> _readyQueue = new();
     private readonly ConcurrentDictionary<Guid, Continuation> _continuations = [];
     private readonly IObservable<TaskResult> _results;
@@ -45,13 +45,13 @@ public class Coordinator
         });
 
         // funnel leaf tasks into the ready queue immediately 
-        _scheduleInput
+        _scheduleQueue
             .Where(task => task.Action.ChildTasks.Length <= 0)
             .Select(task => (task, ImmutableArray<BuildResult>.Empty))
             .Subscribe(_readyQueue);
 
         // funnel child tasks back into the schedule pool
-        _scheduleInput
+        _scheduleQueue
             .Where(task => task.Action.ChildTasks.Length > 0)
             .SelectMany(task =>
             {
@@ -66,7 +66,7 @@ public class Coordinator
                 return task.Action.ChildTasks
                     .Select((child, index) => new BuildTask(task, Guid.NewGuid(), index, task.Source, child));
             })
-            .Subscribe(_scheduleInput);
+            .Subscribe(_scheduleQueue);
 
         // construct the queue of results, where individual tasks are constucted asynchronously
         _results = Observable.Merge(_readyQueue.Distinct(ready => ready.Task.Id).Select(ready => Task.Run(async () =>
@@ -128,7 +128,7 @@ public class Coordinator
         }).Select(cont => (cont.Task, cont.Children)).Subscribe(_readyQueue);
 
         // register the first task
-        _scheduleInput.OnNext(new BuildTask(null, Guid.NewGuid(), -1, source, rootAction));
+        _scheduleQueue.OnNext(new BuildTask(null, Guid.NewGuid(), -1, source, rootAction));
     }
 
     public async Task<BuildResult> WaitAsync()
