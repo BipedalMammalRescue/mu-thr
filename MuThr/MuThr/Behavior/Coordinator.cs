@@ -65,6 +65,12 @@ public class Coordinator
         // construct the queue of results, where individual tasks are constucted asynchronously
         _results = Observable.Merge(_readyQueue.Select(task => Task.Run(async () =>
         {
+            // early termination: if there are errored children, bubble up the error
+            IEnumerable<string> childErrors = task.Children.SelectMany(c => c.Errors);
+            if (childErrors.Any())
+                return new TaskResult(task.Task, new BuildResult() { Errors = [.. childErrors] });
+
+            // normal code path
             BuildEnvironment env = new(task.Task.Source, task.Children);
             BuildResult result = await task.Task.Action.ExecuteAsync(env).ConfigureAwait(false);
             return new TaskResult(task.Task, result);
