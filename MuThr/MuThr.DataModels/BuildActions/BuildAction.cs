@@ -9,9 +9,10 @@ namespace MuThr.DataModels.BuildActions;
 [JsonDerivedType(typeof(CommandBuildAction), typeDiscriminator: "command")]
 public abstract class BuildAction
 {
-    protected record ProtoBuildResult(ImmutableDictionary<string, string> Tags, string[] Errors);
+    protected record ProtoBuildResult(ImmutableDictionary<string, string> Tags, BuildError[] Errors);
     protected static ProtoBuildResult Result(Dictionary<string, string> tags) => new(tags.ToImmutableDictionary(), []);
-    protected static ProtoBuildResult Error(params string[] errors) => new(ImmutableDictionary<string, string>.Empty, errors);
+    protected static ProtoBuildResult Error(params string[] errors) => new(ImmutableDictionary<string, string>.Empty, [.. errors.Select(e => new BuildErrorMessage(e))]);
+    protected static ProtoBuildResult Error(params Exception[] errors) => new(ImmutableDictionary<string, string>.Empty, [.. errors.Select(e => new BuildException(e))]);
 
     public BuildAction[] ChildTasks { get; set; } = [];
 
