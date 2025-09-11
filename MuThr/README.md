@@ -21,6 +21,10 @@ Due to the stateless nature of MuThr's task coordination, this pattern allows si
 MuThr uses Linq and ReativeX as the main framework. 
 The combination of these frameworks, combined with the data-oriented design, allows MuThr to achieve high degree of dependency-free parallelism and efficient scheduling of individual sub-tasks during build execution.
 
+## Sample Usage
+
+Refer to ./MuThr/MuThr.csproj for a sample executable that uses the SDK.
+
 ## TODO
 
 Adaptation mechanism used to allow externally defined semantic to be converted into the initial build input.
