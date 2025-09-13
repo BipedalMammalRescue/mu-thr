@@ -15,5 +15,7 @@ public class MuThrLogger(ImmutableArray<string> channels, ILogger core) : IMuThr
     /// <returns></returns>
     public IMuThrLogger WithChannel(params string[] channel) => new MuThrLogger(channels.AddRange(channel), core);
 
+    public IMuThrLogger ForTask(Guid id) => new MuThrLogger(channels, core.ForContext("TaskId", id));
+
     public void Write(LogEvent logEvent) => core.ForContext("__channels__", channels).Write(logEvent);
 }

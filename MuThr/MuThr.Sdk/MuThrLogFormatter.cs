@@ -26,6 +26,7 @@ public class MuThrLogEnricher : ILogEventEnricher
         if (channel == null)
             return;
         logEvent.AddOrUpdateProperty(propertyFactory.CreateProperty("PrimaryChannel", channel));
+        logEvent.AddPropertyIfAbsent(propertyFactory.CreateProperty("TaskId", "N/A"));
     }
 }
 

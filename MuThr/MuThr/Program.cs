@@ -1,4 +1,5 @@
-﻿using MuThr.DataModels.BuildActions;
+﻿using MuThr.DataModels;
+using MuThr.DataModels.BuildActions;
 using MuThr.DataModels.Diagnostic;
 using MuThr.DataModels.Schema;
 using MuThr.Sdk;
@@ -65,8 +66,8 @@ internal class Program
                 ["bar"] = new ExampleData("world")
             }), logger.WithChannel("Coordinator"));
 
-        BuildResult result = await coord.WaitAsync().ConfigureAwait(false);
-        string outputPath = result.OutputPath;
+        IEnumerable<BuildResult> result = await coord.WaitAsync().ConfigureAwait(false);
+        string outputPath = result.First().OutputPath;
 
         try
         {

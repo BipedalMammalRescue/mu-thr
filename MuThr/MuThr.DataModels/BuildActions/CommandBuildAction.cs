@@ -22,19 +22,29 @@ public class CommandBuildAction : BuildAction
         }
 
         // redirect both input and output
+        int pid = 0;
         builder.StartInfo.RedirectStandardInput = true;
         builder.StartInfo.RedirectStandardOutput = true;
         builder.StartInfo.RedirectStandardError = true;
-        builder.ErrorDataReceived += (_, e) => logger.Error("Builder err: {e}", e.Data);
+        builder.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+                return;
+            logger.Error("Command err: {e}", e.Data);
+        };
 
         // run the builder
         builder.Start();
-        logger.Information("Builder process started: {name} {args} ({pid})", builder.StartInfo.FileName, builder.StartInfo.Arguments, builder.Id);
+        pid = builder.Id;
+        builder.BeginErrorReadLine();
+        logger.Information("Command: `{name} {args}` ({pid})", builder.StartInfo.FileName, string.Join(' ', builder.StartInfo.ArgumentList), pid);
+
         await input.CopyToAsync(builder.StandardInput.BaseStream).ConfigureAwait(false);
         builder.StandardInput.Close();
+
         await builder.StandardOutput.BaseStream.CopyToAsync(output).ConfigureAwait(false);
         await builder.WaitForExitAsync().ConfigureAwait(false);
-        logger.Information("Builder exit.");
+        logger.Information("Command exit {exitCode} ({pid}).", builder.ExitCode, pid);
 
         // collect results
         if (builder.ExitCode != 0)

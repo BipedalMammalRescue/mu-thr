@@ -1,7 +1,7 @@
-using MuThr.DataModels.Components.Input;
+using MuThr.DataModels.BuildActions;
 using MuThr.DataModels.Diagnostic;
 
-namespace MuThr.DataModels.BuildActions.Components.Input;
+namespace MuThr.DataModels.Components.Input;
 
 public class ConcatInput : IInputComponent
 {

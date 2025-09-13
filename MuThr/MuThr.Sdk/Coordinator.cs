@@ -4,6 +4,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Reactive.Threading.Tasks;
 using System.Text.Json;
+using MuThr.DataModels;
 using MuThr.DataModels.BuildActions;
 using MuThr.DataModels.Diagnostic;
 using MuThr.DataModels.Schema;
@@ -42,6 +43,10 @@ public class Coordinator
     private readonly ConcurrentDictionary<Guid, Continuation> _continuations = [];
     private readonly IObservable<TaskResult> _results;
 
+    private int _rootCount = 1;
+
+    private static IMuThrLogger CreateTaskLogger(IMuThrLogger logger, BuildTask task) => logger.WithChannel(task.Action.GetType().Name).ForTask(task.Id);
+
     public Coordinator(BuildAction rootAction, IDataPoint source, IMuThrLogger logger)
     {
         // these are just logging
@@ -52,20 +57,19 @@ public class Coordinator
                 logger.Verbose("Task detail: {id}, {detail}", JsonSerializer.Serialize(s.Action));
             });
 
-        // funnel leaf tasks into the ready queue immediately 
-
-
-        // separate tasks that have children from leaf tasks
+        // make a reusable source of schedule requests
         IObservable<(BuildTask Task, BuildAction[] Children)> taskAndChildren = _scheduleQueue
-            .Select(t => (t, t.Action.CollectChildren(t.Source, logger.ForTask(t.Id)).ToArray()))
+            .Select(t => (t, t.Action.CollectChildren(t.Source, CreateTaskLogger(logger, t)).ToArray()))
             .Publish()
             .AutoConnect();
 
+        // separate out tasks immediately schedulable
         taskAndChildren
             .Where(pair => pair.Children.Length <= 0)
             .Select(pair => (pair.Task, ImmutableArray<BuildResult>.Empty))
             .Subscribe(_readyQueue);
 
+        // schedule children and create continuations
         taskAndChildren
             .Where(pair => pair.Children.Length > 0)
             .SelectMany(pair =>
@@ -100,7 +104,7 @@ public class Coordinator
                 logger.Information("Task started: {id}", ready.Task.Id);
 
                 BuildEnvironment env = new(ready.Task.Source, ready.Children, string.Empty);
-                BuildResult result = await ready.Task.Action.ExecuteAsync(env, logger.WithChannel(ready.Task.Id.ToString())).ConfigureAwait(false);
+                BuildResult result = await ready.Task.Action.ExecuteAsync(env, CreateTaskLogger(logger, ready.Task)).ConfigureAwait(false);
 
                 // clean up
                 logger.Verbose("Cleaning up for task {id}.", ready.Task.Id);
@@ -119,7 +123,7 @@ public class Coordinator
             {
                 return new TaskResult(ready.Task, new BuildResult() { Errors = [new BuildException(ex)] });
             }
-        }).ToObservable())).Publish().AutoConnect().TakeUntil(x => x.Task.Parent == null);
+        }).ToObservable())).Publish().AutoConnect(); // TODO: need to implement new termination condition
 
         // funnel results back into continuation
         _results.Where(result => result.Task.Parent != null).SelectMany<TaskResult, Continuation>(result =>
@@ -163,13 +167,26 @@ public class Coordinator
             }
         }).Select(cont => (cont.Task, cont.Children)).Subscribe(_readyQueue);
 
+        // spawn new root tasks from derived tasks
+        _results
+            .Where(result => result.Result.DerivedTasks.Length > 0)
+            .SelectMany(result =>
+            {
+                Interlocked.Increment(ref _rootCount);
+                return result.Result.DerivedTasks.Select(task => new BuildTask(null, Guid.NewGuid(), -1, task.Data, task.Action, task.PathPrefix));
+            })
+            .Subscribe(_scheduleQueue);
+
         // register the first task
         _scheduleQueue.OnNext(new BuildTask(null, Guid.NewGuid(), -1, source, rootAction, string.Empty));
     }
 
-    public async Task<BuildResult> WaitAsync()
+    public async Task<IEnumerable<BuildResult>> WaitAsync()
     {
-        var result = await _results.ToTask().ConfigureAwait(false);
-        return result.Result;
+        return await _results
+            .Where(result => result.Task.Parent == null)
+            .TakeUntil(_ => Interlocked.Decrement(ref _rootCount) == 0)
+            .Scan(ImmutableArray<BuildResult>.Empty, (oldArr, newResult) => oldArr.Add(newResult.Result))
+            .ToTask().ConfigureAwait(false);
     }
 }
