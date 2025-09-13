@@ -172,7 +172,7 @@ public class Coordinator
             .Where(result => result.Result.DerivedTasks.Length > 0)
             .SelectMany(result =>
             {
-                Interlocked.Increment(ref _rootCount);
+                Interlocked.Add(ref _rootCount, result.Result.DerivedTasks.Length);
                 return result.Result.DerivedTasks.Select(task => new BuildTask(null, Guid.NewGuid(), -1, task.Data, task.Action, task.PathPrefix));
             })
             .Subscribe(_scheduleQueue);

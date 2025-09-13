@@ -20,37 +20,11 @@ internal class Program
 
     private class ExampleObjData(Dictionary<string, IDataPoint> data) : IObjDataPoint
     {
-        public IDataPoint? Get(string path) => data.TryGetValue(path, out IDataPoint? result) ? null : result;
+        public IDataPoint? Get(string path) => data.TryGetValue(path, out IDataPoint? result) ? result : null;
     }
 
     private static async Task Main(string[] _)
     {
-        BuildAction rootAction = new CommandBuildAction()
-        {
-            ChildTasks = [
-                new CommandBuildAction()
-                {
-                    Process = "echo",
-                    Arguments = ["hello"]
-                },
-                new CommandBuildAction()
-                {
-                    Process = "echo",
-                    Arguments = ["world"]
-                },
-                new CommandBuildAction()
-                {
-                    Process = "echo",
-                    Arguments = ["111"]
-                }
-            ],
-            Process = "cat",
-            Arguments = [
-                "#0",
-                "#1"
-            ]
-        };
-
         // initialize logging
 #pragma warning disable CA1859 // Use concrete types when possible for improved performance
         IMuThrLogger logger = new MuThrLogger(["AppRoot"], new LoggerConfiguration()
@@ -60,26 +34,75 @@ internal class Program
             .CreateLogger());
 #pragma warning restore CA1859 // Use concrete types when possible for improved performance
 
+        BuildAction rootAction = new CommandBuildAction()
+        {
+            ChildTasks = [
+                new UnpackBuildAction()
+                {
+                    SourcePath = "foobar:foo",
+                    DerivedAction = new CommandBuildAction()
+                    {
+                        Process = "echo",
+                        Arguments = ["#(foo)", "#(bar)"]
+                    }
+                },
+                new CommandBuildAction()
+                {
+                    Process = "echo",
+                    Arguments = ["#(foo)"]
+                },
+                new CommandBuildAction()
+                {
+                    Process = "echo",
+                    Arguments = ["#(bar)"]
+                }
+            ],
+            Process = "cat",
+            Arguments = [
+                "#1",
+                "#2"
+            ]
+        };
+
         Coordinator coord = new(rootAction,
-            new ExampleObjData(new Dictionary<string, IDataPoint>() {
+            new ExampleObjData(new Dictionary<string, IDataPoint>()
+            {
                 ["foo"] = new ExampleData("hello"),
-                ["bar"] = new ExampleData("world")
+                ["bar"] = new ExampleData("world"),
+                ["foobar"] = new ExampleObjData(new Dictionary<string, IDataPoint>()
+                {
+                    ["foo"] = new ExampleArrData([
+                        new ExampleObjData(new Dictionary<string, IDataPoint>() {
+                            ["foo"] = new ExampleData("hello"),
+                            ["bar"] = new ExampleData("world"),
+                        }),
+                        new ExampleObjData(new Dictionary<string, IDataPoint>() {
+                            ["foo"] = new ExampleData("foo"),
+                            ["bar"] = new ExampleData("bar"),
+                        })
+                    ])
+                })
             }), logger.WithChannel("Coordinator"));
 
-        IEnumerable<BuildResult> result = await coord.WaitAsync().ConfigureAwait(false);
-        string outputPath = result.First().OutputPath;
+        IEnumerable<BuildResult> results = await coord.WaitAsync().ConfigureAwait(false);
 
         try
         {
-            using StreamReader fs = new(outputPath);
-            string content = await fs.ReadToEndAsync().ConfigureAwait(false);
-            logger.Information("Job result: {result}", content);
+            foreach (BuildResult result in results)
+            {
+                using StreamReader fs = new(result.OutputPath);
+                string content = await fs.ReadToEndAsync().ConfigureAwait(false);
+                logger.Information("Job result: `{result}`", content);
+            }
         }
         finally
         {
-            if (File.Exists(outputPath))
+            foreach (BuildResult result in results)
             {
-                File.Delete(outputPath);
+                if (File.Exists(result.OutputPath))
+                {
+                    File.Delete(result.OutputPath);
+                }
             }
         }
     }
