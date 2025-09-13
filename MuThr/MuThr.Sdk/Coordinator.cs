@@ -17,6 +17,7 @@ public class Coordinator
 {
     private record BuildTask
     (
+        string Key, // only useful for roots
         BuildTask? Parent,
         Guid Id,
         int ParentalRelation,
@@ -38,27 +39,56 @@ public class Coordinator
     private static long BuildMask(int length) => (1 << length) - 1;
     private static long BuildFlag(int index) => 1 << index;
 
+    private readonly Subject<string> _requestQueue = new();
     private readonly Subject<BuildTask> _scheduleQueue = new();
     private readonly Subject<(BuildTask Task, ImmutableArray<BuildResult> Children)> _readyQueue = new();
     private readonly ConcurrentDictionary<Guid, Continuation> _continuations = [];
     private readonly IObservable<TaskResult> _results;
 
-    private int _rootCount = 1;
+    private int _rootCount = 0;
+
+    public Task<ImmutableDictionary<string, BuildResult>> OutputTask { get; }
 
     private static IMuThrLogger CreateTaskLogger(IMuThrLogger logger, BuildTask task) => logger.WithChannel(task.Action.GetType().Name).ForTask(task.Id);
 
-    public Coordinator(BuildAction rootAction, IDataPoint source, IMuThrLogger logger)
+    public void ScheduleTask(string key)
+    {
+        _requestQueue.OnNext(key);
+    }
+
+    public Coordinator(ITaskProvider taskProvider, IMuThrLogger logger)
     {
         // these are just logging
         _readyQueue.Subscribe(ready => logger.Information("Task ready: {id}", ready.Task.Id));
-        _scheduleQueue.Subscribe(s =>
+
+        // transform requests into scheduling
+        _requestQueue
+            .Distinct()
+            .SelectMany<string, BuildTask>(req =>
             {
-                logger.Information("Task scheduled: Type = {name} ID = {id}, Parent = {parent}", s.Action.GetType().Name, s.Id, s.Parent?.Id);
-                logger.Verbose("Task detail: {id}, {detail}", JsonSerializer.Serialize(s.Action));
-            });
+                try
+                {
+                    logger.Verbose("Handling request `{req}`", req);
+                    (BuildAction action, IDataPoint data) = taskProvider.CreateTask(req);
+                    BuildTask newTask = new(req, null, Guid.NewGuid(), -1, data, action, string.Empty);
+                    Interlocked.Increment(ref _rootCount);
+                    return [newTask];
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(ex, "Failed to create task for request `{req}`", req);
+                    return [];
+                }
+            })
+            .Subscribe(_scheduleQueue);
 
         // make a reusable source of schedule requests
         IObservable<(BuildTask Task, BuildAction[] Children)> taskAndChildren = _scheduleQueue
+            .Do(s =>
+            {
+                logger.Information("Task scheduled: Key = {key}, Type = {name}, ID = {id}, Parent = {parent}", s.Key, s.Action.GetType().Name, s.Id, s.Parent?.Id);
+                logger.Verbose("Task detail: {id}, {detail}", s.Id, JsonSerializer.Serialize(s.Action));
+            })
             .Select(t => (t, t.Action.CollectChildren(t.Source, CreateTaskLogger(logger, t)).ToArray()))
             .Publish()
             .AutoConnect();
@@ -81,9 +111,9 @@ public class Coordinator
                     (oldId, oldCont) => oldCont with { Task = pair.Task }
                 );
 
-                // send the children back to scheduler
+                // send the children back to scheduler (children inherit keys since why not)
                 return pair.Children
-                    .Select((child, index) => new BuildTask(pair.Task, Guid.NewGuid(), index, pair.Task.Source, child, pair.Task.PathPrefix));
+                    .Select((child, index) => new BuildTask(pair.Task.Key, pair.Task, Guid.NewGuid(), index, pair.Task.Source, child, pair.Task.PathPrefix));
             })
             .Subscribe(_scheduleQueue);
 
@@ -123,7 +153,7 @@ public class Coordinator
             {
                 return new TaskResult(ready.Task, new BuildResult() { Errors = [new BuildException(ex)] });
             }
-        }).ToObservable())).Publish().AutoConnect(); // TODO: need to implement new termination condition
+        }).ToObservable())).Publish().AutoConnect();
 
         // funnel results back into continuation
         _results.Where(result => result.Task.Parent != null).SelectMany<TaskResult, Continuation>(result =>
@@ -170,23 +200,14 @@ public class Coordinator
         // spawn new root tasks from derived tasks
         _results
             .Where(result => result.Result.DerivedTasks.Length > 0)
-            .SelectMany(result =>
-            {
-                Interlocked.Add(ref _rootCount, result.Result.DerivedTasks.Length);
-                return result.Result.DerivedTasks.Select(task => new BuildTask(null, Guid.NewGuid(), -1, task.Data, task.Action, task.PathPrefix));
-            })
-            .Subscribe(_scheduleQueue);
+            .SelectMany(result => result.Result.DerivedTasks)
+            .Subscribe(_requestQueue);
 
-        // register the first task
-        _scheduleQueue.OnNext(new BuildTask(null, Guid.NewGuid(), -1, source, rootAction, string.Empty));
-    }
-
-    public async Task<IEnumerable<BuildResult>> WaitAsync()
-    {
-        return await _results
+        // builds a dictinary from key to results for root tasks only
+        OutputTask = _results
             .Where(result => result.Task.Parent == null)
             .TakeUntil(_ => Interlocked.Decrement(ref _rootCount) == 0)
-            .Scan(ImmutableArray<BuildResult>.Empty, (oldArr, newResult) => oldArr.Add(newResult.Result))
-            .ToTask().ConfigureAwait(false);
+            .Scan(ImmutableDictionary<string, BuildResult>.Empty, (oldArr, newResult) => oldArr.Add(newResult.Task.Key, newResult.Result))
+            .ToTask();
     }
 }

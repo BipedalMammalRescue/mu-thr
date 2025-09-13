@@ -9,13 +9,13 @@ namespace MuThr.DataModels.BuildActions;
 
 [JsonPolymorphic]
 [JsonDerivedType(typeof(CommandBuildAction), typeDiscriminator: "command")]
-[JsonDerivedType(typeof(UnpackBuildAction), typeDiscriminator: "unpack")]
 [JsonDerivedType(typeof(DeriveBuildAction), typeDiscriminator: "derive")]
+[JsonDerivedType(typeof(BypassBuildAction), typeDiscriminator: "bypass")]
 public abstract partial class BuildAction
 {
-    protected record ProtoBuildResult(ImmutableDictionary<string, string> Tags, BuildError[] Errors, DerivedTask[] DerivedTasks);
+    protected record ProtoBuildResult(ImmutableDictionary<string, string> Tags, BuildError[] Errors, string[] DerivedTasks);
     protected static ProtoBuildResult Result(Dictionary<string, string> tags) => new(tags.ToImmutableDictionary(), [], []);
-    protected static ProtoBuildResult Derive(params DerivedTask[] derivedTasks) => new(ImmutableDictionary<string, string>.Empty, [], derivedTasks);
+    protected static ProtoBuildResult Derive(params string[] derivedTasks) => new(ImmutableDictionary<string, string>.Empty, [], derivedTasks);
     protected static ProtoBuildResult Error(params string[] errors) => new(ImmutableDictionary<string, string>.Empty, [.. errors.Select(e => new BuildErrorMessage(e))], []);
     protected static ProtoBuildResult Error(params Exception[] errors) => new(ImmutableDictionary<string, string>.Empty, [.. errors.Select(e => new BuildException(e))], []);
 

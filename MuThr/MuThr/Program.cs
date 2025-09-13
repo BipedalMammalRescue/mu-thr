@@ -1,4 +1,5 @@
-﻿using MuThr.DataModels;
+﻿using System.Collections.Immutable;
+using MuThr.DataModels;
 using MuThr.DataModels.BuildActions;
 using MuThr.DataModels.Diagnostic;
 using MuThr.DataModels.Schema;
@@ -23,6 +24,56 @@ internal class Program
         public IDataPoint? Get(string path) => data.TryGetValue(path, out IDataPoint? result) ? result : null;
     }
 
+    private class ExampleTaskProvider : ITaskProvider
+    {
+        private readonly Dictionary<string, IDataPoint> _sources = new()
+        {
+            ["init"] = new ExampleObjData(new Dictionary<string, IDataPoint>()
+            {
+                ["lhs"] = new ExampleData("t1"),
+                ["rhs"] = new ExampleData("t2"),
+            }),
+            ["t1"] = new ExampleObjData(new Dictionary<string, IDataPoint>()
+            {
+                ["foo"] = new ExampleData("hello"),
+                ["bar"] = new ExampleData("world"),
+            }),
+            ["t2"] = new ExampleObjData(new Dictionary<string, IDataPoint>()
+            {
+                ["foo"] = new ExampleData("one"),
+                ["bar"] = new ExampleData("two"),
+            }),
+        };
+        
+        private readonly BuildAction _initAction = new BypassBuildAction()
+        {
+            ChildTasks = [
+                new DeriveBuildAction() {
+                    SourcePath = "lhs"
+                },
+                new DeriveBuildAction() {
+                    SourcePath = "rhs"
+                }
+            ]
+        };
+
+        private readonly BuildAction _regAction = new CommandBuildAction()
+        {
+            Process = "echo",
+            Arguments = [
+                "#(foo)",
+                "#(bar)"
+            ]
+        };
+
+        public (BuildAction Action, IDataPoint SourceData) CreateTask(string key)
+        {
+            IDataPoint data = _sources[key];
+            BuildAction action = key == "init" ? _initAction : _regAction;
+            return (action, data);
+        }
+    }
+
     private static async Task Main(string[] _)
     {
         // initialize logging
@@ -34,70 +85,27 @@ internal class Program
             .CreateLogger());
 #pragma warning restore CA1859 // Use concrete types when possible for improved performance
 
-        BuildAction rootAction = new CommandBuildAction()
-        {
-            ChildTasks = [
-                new UnpackBuildAction()
-                {
-                    SourcePath = "foobar:foo",
-                    DerivedAction = new CommandBuildAction()
-                    {
-                        Process = "echo",
-                        Arguments = ["#(foo)", "#(bar)"]
-                    }
-                },
-                new CommandBuildAction()
-                {
-                    Process = "echo",
-                    Arguments = ["#(foo)"]
-                },
-                new CommandBuildAction()
-                {
-                    Process = "echo",
-                    Arguments = ["#(bar)"]
-                }
-            ],
-            Process = "cat",
-            Arguments = [
-                "#1",
-                "#2"
-            ]
-        };
+        Coordinator coord = new(new ExampleTaskProvider(), logger.WithChannel("Coordinator"));
+        coord.ScheduleTask("init");
+        coord.ScheduleTask("t1");
+        coord.ScheduleTask("t1");
+        coord.ScheduleTask("t1");
+        coord.ScheduleTask("t1");
 
-        Coordinator coord = new(rootAction,
-            new ExampleObjData(new Dictionary<string, IDataPoint>()
-            {
-                ["foo"] = new ExampleData("hello"),
-                ["bar"] = new ExampleData("world"),
-                ["foobar"] = new ExampleObjData(new Dictionary<string, IDataPoint>()
-                {
-                    ["foo"] = new ExampleArrData([
-                        new ExampleObjData(new Dictionary<string, IDataPoint>() {
-                            ["foo"] = new ExampleData("hello"),
-                            ["bar"] = new ExampleData("world"),
-                        }),
-                        new ExampleObjData(new Dictionary<string, IDataPoint>() {
-                            ["foo"] = new ExampleData("foo"),
-                            ["bar"] = new ExampleData("bar"),
-                        })
-                    ])
-                })
-            }), logger.WithChannel("Coordinator"));
-
-        IEnumerable<BuildResult> results = await coord.WaitAsync().ConfigureAwait(false);
+        ImmutableDictionary<string, BuildResult> results = await coord.OutputTask.ConfigureAwait(false);
 
         try
         {
-            foreach (BuildResult result in results)
+            foreach (var result in results)
             {
-                using StreamReader fs = new(result.OutputPath);
+                using StreamReader fs = new(result.Value.OutputPath);
                 string content = await fs.ReadToEndAsync().ConfigureAwait(false);
-                logger.Information("Job result: `{result}`", content);
+                logger.Information("Job result: <{key}> `{result}`", result.Key, content);
             }
         }
         finally
         {
-            foreach (BuildResult result in results)
+            foreach (BuildResult result in results.Values)
             {
                 if (File.Exists(result.OutputPath))
                 {

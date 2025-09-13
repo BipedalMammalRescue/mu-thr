@@ -7,13 +7,9 @@ namespace MuThr.Sdk;
 
 public class MuThrLogger(ImmutableArray<string> channels, ILogger core) : IMuThrLogger
 {
-    /// <summary>
-    /// Create a new logger with additional (more important) channels.
-    /// </summary>
-    /// <param name="channel"></param>
-    /// <remarks>the *last* channel is the one used as primary channel</remarks>
-    /// <returns></returns>
-    public IMuThrLogger WithChannel(params string[] channel) => new MuThrLogger(channels.AddRange(channel), core);
+    public IMuThrLogger WithChannel(params string[] newChannel) => new MuThrLogger([..newChannel], core);
+
+    public IMuThrLogger AddChannel(params string[] newChannel) => new MuThrLogger(channels.AddRange(newChannel), core);
 
     public IMuThrLogger ForTask(Guid id) => new MuThrLogger(channels, core.ForContext("TaskId", id));
 
