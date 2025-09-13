@@ -68,5 +68,5 @@ public partial record BuildEnvironment(IDataPoint SourceData, ImmutableArray<Bui
         return result;
     }
 
-    public string GetFullPath(string suffix) => $"{PathPrefix}:{suffix}";
+    public string GetFullPath(string suffix) => PathPrefix.Length <= 0 ? suffix : $"{PathPrefix}:{suffix}";
 }
