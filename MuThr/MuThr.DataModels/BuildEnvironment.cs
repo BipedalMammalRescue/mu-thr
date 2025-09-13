@@ -1,9 +1,10 @@
 using System.Collections.Immutable;
 using System.Text.RegularExpressions;
+using MuThr.DataModels.Schema;
 
 namespace MuThr.DataModels.BuildActions;
 
-public partial record BuildEnvironment(IDictionary<string, string> SourceData, ImmutableArray<BuildResult> ChildrenResults)
+public partial record BuildEnvironment(IDataPoint SourceData, ImmutableArray<BuildResult> ChildrenResults, string PathPrefix)
 {
     [GeneratedRegex("#\\((?<fieldref>\\w+)\\)")]
     private partial Regex GetSourceReference();
@@ -13,6 +14,25 @@ public partial record BuildEnvironment(IDictionary<string, string> SourceData, I
 
     [GeneratedRegex("#(?<id>[0-9]+)")]
     private partial Regex GetOutputReference();
+
+    public T? GetDataPoint<T>(string path) where T : IDataPoint
+    {
+        string[] segments = path.Split(':');
+        IDataPoint? lastSource = segments.Aggregate<string, IDataPoint?>(SourceData, (old, key) => old switch
+        {
+            null => null,
+            ILeafDataPoint leaf => null,
+            IArrayDataPoint arr => (int.TryParse(key, out int intKey) && intKey < arr.Get().Length && intKey >= 0) ? arr.Get()[intKey] : null,
+            IObjDataPoint obj => obj.Get(key),
+            _ => null
+        });
+
+        return lastSource switch
+        {
+            T castValue => castValue,
+            _ => default
+        };
+    }
 
     public string ExpandValues(string source)
     {
@@ -26,10 +46,8 @@ public partial record BuildEnvironment(IDictionary<string, string> SourceData, I
                 return result;
 
             string field = match.Groups["fieldref"].Value;
-            if (!SourceData.TryGetValue(field, out string? foundValue))
-                return result;
-
-            return foundValue;
+            ILeafDataPoint fieldData = GetDataPoint<ILeafDataPoint>(field) ?? throw new Exception($"Single data point at path {PathPrefix}:{field} not found.");
+            return fieldData.GetString();
         });
 
         // expand child tags
@@ -49,4 +67,6 @@ public partial record BuildEnvironment(IDictionary<string, string> SourceData, I
 
         return result;
     }
+
+    public string GetFullPath(string suffix) => $"{PathPrefix}:{suffix}";
 }

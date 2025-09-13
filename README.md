@@ -16,10 +16,15 @@ MuThr's error handling is implemented using the optional pattern, albeit a heavi
 This pattern allows error and output data to be passed in the same code path, and the system never crashes due to a task failure; instead, error data is returned to the observing parties, which in turn causes future tasks that depend on an errored task to be canceled.
 Due to the stateless nature of MuThr's task coordination, this pattern allows simple yet always graceful error recovery for any individual task failure.
 
-## Reactive Parallelism
+### Reactive Parallelism
 
 MuThr uses Linq and ReativeX as the main framework. 
 The combination of these frameworks, combined with the data-oriented design, allows MuThr to achieve high degree of dependency-free parallelism and efficient scheduling of individual sub-tasks during build execution.
+
+## Intended Scope
+
+MuThr is intended to use for small scale projects with few technical legacies/dependencies. 
+The data pipeline that generates behavior from pre-defined JSON schema determines that the system isn't well-suited for large scale projects where more flexibility is required to achieve reasonable performance/coverage.
 
 ## Sample Usage
 

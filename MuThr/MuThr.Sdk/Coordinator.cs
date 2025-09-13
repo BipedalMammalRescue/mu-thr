@@ -5,7 +5,8 @@ using System.Reactive.Subjects;
 using System.Reactive.Threading.Tasks;
 using System.Text.Json;
 using MuThr.DataModels.BuildActions;
-using Serilog;
+using MuThr.DataModels.Diagnostic;
+using MuThr.DataModels.Schema;
 
 namespace MuThr.Sdk;
 
@@ -18,8 +19,9 @@ public class Coordinator
         BuildTask? Parent,
         Guid Id,
         int ParentalRelation,
-        ImmutableDictionary<string, string> Source,
-        BuildAction Action
+        IDataPoint Source,
+        BuildAction Action,
+        string PathPrefix
     );
 
     private record Continuation
@@ -40,60 +42,68 @@ public class Coordinator
     private readonly ConcurrentDictionary<Guid, Continuation> _continuations = [];
     private readonly IObservable<TaskResult> _results;
 
-    public Coordinator(BuildAction rootAction, ImmutableDictionary<string, string> source, ILogger logger)
+    public Coordinator(BuildAction rootAction, IDataPoint source, IMuThrLogger logger)
     {
-        _readyQueue.Subscribe(ready =>
-        {
-            logger.Information("Task ready: {id}", ready.Task.Id);
-        });
-
+        // these are just logging
+        _readyQueue.Subscribe(ready => logger.Information("Task ready: {id}", ready.Task.Id));
         _scheduleQueue.Subscribe(s =>
             {
-                logger.Information("Task scheduled: {id}, parent is {parent}", s.Id, s.Parent?.Id);
-                logger.Debug("Task detail: {id}, {detail}", JsonSerializer.Serialize(s.Action));
+                logger.Information("Task scheduled: Type = {name} ID = {id}, Parent = {parent}", s.Action.GetType().Name, s.Id, s.Parent?.Id);
+                logger.Verbose("Task detail: {id}, {detail}", JsonSerializer.Serialize(s.Action));
             });
 
         // funnel leaf tasks into the ready queue immediately 
-        _scheduleQueue
-            .Where(task => task.Action.ChildTasks.Length <= 0)
-            .Select(task => (task, ImmutableArray<BuildResult>.Empty))
+
+
+        // separate tasks that have children from leaf tasks
+        IObservable<(BuildTask Task, BuildAction[] Children)> taskAndChildren = _scheduleQueue
+            .Select(t => (t, t.Action.CollectChildren(t.Source, logger.ForTask(t.Id)).ToArray()))
+            .Publish()
+            .AutoConnect();
+
+        taskAndChildren
+            .Where(pair => pair.Children.Length <= 0)
+            .Select(pair => (pair.Task, ImmutableArray<BuildResult>.Empty))
             .Subscribe(_readyQueue);
 
-        // funnel child tasks back into the schedule pool
-        _scheduleQueue
-            .Where(task => task.Action.ChildTasks.Length > 0)
-            .SelectMany(task =>
+        taskAndChildren
+            .Where(pair => pair.Children.Length > 0)
+            .SelectMany(pair =>
             {
                 // register a continuation
                 _continuations.AddOrUpdate(
-                    task.Id,
-                    _ => new Continuation(task, [.. new BuildResult[task.Action.ChildTasks.Length]], BuildMask(task.Action.ChildTasks.Length), 0),
-                    (oldId, oldCont) => oldCont with { Task = task }
+                    pair.Task.Id,
+                    _ => new Continuation(pair.Task, [.. new BuildResult[pair.Children.Length]], BuildMask(pair.Children.Length), 0),
+                    (oldId, oldCont) => oldCont with { Task = pair.Task }
                 );
 
                 // send the children back to scheduler
-                return task.Action.ChildTasks
-                    .Select((child, index) => new BuildTask(task, Guid.NewGuid(), index, task.Source, child));
+                return pair.Children
+                    .Select((child, index) => new BuildTask(pair.Task, Guid.NewGuid(), index, pair.Task.Source, child, pair.Task.PathPrefix));
             })
             .Subscribe(_scheduleQueue);
 
         // construct the queue of results, where individual tasks are constucted asynchronously
         _results = Observable.Merge(_readyQueue.Select(ready => Task.Run(async () =>
         {
-            logger.Information("Task started: {id}", ready.Task.Id);
-
             // early termination: if there are errored children, bubble up the error
             IEnumerable<BuildError> childErrors = ready.Children.SelectMany(c => c.Errors);
             if (childErrors.Any())
+            {
+                logger.Error("Task {parent}/{id} canceled due to child task failures.", ready.Task.Parent?.Id, ready.Task.Id);
                 return new TaskResult(ready.Task, new BuildResult() { Errors = [.. childErrors] });
+            }
 
             // normal code path
             try
             {
-                BuildEnvironment env = new(ready.Task.Source, ready.Children);
-                BuildResult result = await ready.Task.Action.ExecuteAsync(env).ConfigureAwait(false);
+                logger.Information("Task started: {id}", ready.Task.Id);
+
+                BuildEnvironment env = new(ready.Task.Source, ready.Children, string.Empty);
+                BuildResult result = await ready.Task.Action.ExecuteAsync(env, logger.WithChannel(ready.Task.Id.ToString())).ConfigureAwait(false);
 
                 // clean up
+                logger.Verbose("Cleaning up for task {id}.", ready.Task.Id);
                 foreach (BuildResult usedResult in ready.Children)
                 {
                     if (File.Exists(usedResult.OutputPath))
@@ -101,6 +111,7 @@ public class Coordinator
                         File.Delete(usedResult.OutputPath);
                     }
                 }
+                logger.Verbose("Task {id} cleaned up.", ready.Task.Id);
 
                 return new TaskResult(ready.Task, result);
             }
@@ -153,7 +164,7 @@ public class Coordinator
         }).Select(cont => (cont.Task, cont.Children)).Subscribe(_readyQueue);
 
         // register the first task
-        _scheduleQueue.OnNext(new BuildTask(null, Guid.NewGuid(), -1, source, rootAction));
+        _scheduleQueue.OnNext(new BuildTask(null, Guid.NewGuid(), -1, source, rootAction, string.Empty));
     }
 
     public async Task<BuildResult> WaitAsync()
