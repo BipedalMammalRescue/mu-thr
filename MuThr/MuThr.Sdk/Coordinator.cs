@@ -15,6 +15,19 @@ public record TaskReference(Guid? Parent, Guid Id, BuildAction Action);
 
 public class Coordinator
 {
+    private class InvalidBuildAction : BuildAction
+    {
+        protected override Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    private class InvalidDataPoint : IDataPoint;
+
+    private readonly static InvalidDataPoint _invalidData = new();
+    private readonly static InvalidBuildAction _invalidAction = new();
+
     private record BuildTask
     (
         string Key, // only useful for roots
@@ -34,6 +47,10 @@ public class Coordinator
         long CurrentMap
     );
 
+    private record RequestResponse;
+    private record DenyRequest(string Key) : RequestResponse;
+    private record AcceptRequest(string Key, BuildTask Task) : RequestResponse;
+    
     private record TaskResult(BuildTask Task, BuildResult Result);
 
     private static long BuildMask(int length) => (1 << length) - 1;
@@ -62,24 +79,28 @@ public class Coordinator
         _readyQueue.Subscribe(ready => logger.Information("Task ready: {id}", ready.Task.Id));
 
         // transform requests into scheduling
-        _requestQueue
+        IObservable<RequestResponse> responses = _requestQueue
             .Distinct()
-            .SelectMany<string, BuildTask>(req =>
+            .Select<string, RequestResponse>(req =>
             {
+                Interlocked.Increment(ref _rootCount);
+
                 try
                 {
                     logger.Verbose("Handling request `{req}`", req);
                     (BuildAction action, IDataPoint data) = taskProvider.CreateTask(req);
                     BuildTask newTask = new(req, null, Guid.NewGuid(), -1, data, action, string.Empty);
-                    Interlocked.Increment(ref _rootCount);
-                    return [newTask];
+                    return new AcceptRequest(req, newTask);
                 }
                 catch (Exception ex)
                 {
                     logger.Error(ex, "Failed to create task for request `{req}`", req);
-                    return [];
+                    return new DenyRequest(req);
                 }
-            })
+            }).Publish().AutoConnect();
+
+        responses.OfType<AcceptRequest>()
+            .Select(res => res.Task)
             .Subscribe(_scheduleQueue);
 
         // make a reusable source of schedule requests
@@ -118,7 +139,9 @@ public class Coordinator
             .Subscribe(_scheduleQueue);
 
         // construct the queue of results, where individual tasks are constucted asynchronously
-        _results = Observable.Merge(_readyQueue.Select(ready => Task.Run(async () =>
+        _results = Observable.Merge(responses.OfType<DenyRequest>()
+            .Select(res => new TaskResult(new BuildTask(res.Key, null, Guid.Empty, -1, _invalidData, _invalidAction, string.Empty), new BuildResult() { Errors = [new BuildErrorMessage("Failed to create task.")] })),
+            Observable.Merge(_readyQueue.Select(ready => Task.Run(async () =>
         {
             // early termination: if there are errored children, bubble up the error
             IEnumerable<BuildError> childErrors = ready.Children.SelectMany(c => c.Errors);
@@ -153,7 +176,7 @@ public class Coordinator
             {
                 return new TaskResult(ready.Task, new BuildResult() { Errors = [new BuildException(ex)] });
             }
-        }).ToObservable())).Publish().AutoConnect();
+        }).ToObservable()))).Publish().AutoConnect();
 
         // funnel results back into continuation
         _results.Where(result => result.Task.Parent != null).SelectMany<TaskResult, Continuation>(result =>
