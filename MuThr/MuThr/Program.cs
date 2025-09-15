@@ -44,13 +44,10 @@ internal class Program
                 ["bar"] = new ExampleData("two"),
             }),
         };
-        
+
         private readonly BuildAction _initAction = new BypassBuildAction()
         {
             ChildTasks = [
-                new DeriveBuildAction() {
-                    SourcePath = "lhs"
-                },
                 new DeriveBuildAction() {
                     SourcePath = "rhs"
                 }
@@ -86,11 +83,7 @@ internal class Program
 #pragma warning restore CA1859 // Use concrete types when possible for improved performance
 
         Coordinator coord = new(new ExampleTaskProvider(), logger.WithChannel("Coordinator"));
-        coord.ScheduleTask("init");
-        coord.ScheduleTask("t1");
-        coord.ScheduleTask("t1");
-        coord.ScheduleTask("t1");
-        coord.ScheduleTask("t1");
+        coord.ScheduleTask("i11111nit");
 
         ImmutableDictionary<string, BuildResult> results = await coord.OutputTask.ConfigureAwait(false);
 
@@ -98,9 +91,20 @@ internal class Program
         {
             foreach (var result in results)
             {
-                using StreamReader fs = new(result.Value.OutputPath);
-                string content = await fs.ReadToEndAsync().ConfigureAwait(false);
-                logger.Information("Job result: <{key}> `{result}`", result.Key, content);
+                if (result.Value.Errors.Length > 0)
+                {
+                    foreach (var err in result.Value.Errors)
+                    {
+                        logger.Information("Job error: <{key}> {err}", result.Key, err);
+                    }
+                }
+                else
+                {
+                    using StreamReader fs = new(result.Value.OutputPath);
+                    string content = await fs.ReadToEndAsync().ConfigureAwait(false);
+                    logger.Information("Job result: <{key}> `{result}`", result.Key, content);
+                }
+
             }
         }
         finally
