@@ -10,7 +10,7 @@ internal class Program
 {
     private class ExampleData(string data) : ILeafDataPoint
     {
-        public ReadOnlySpan<byte> GetBytes() => [];
+        public byte[] GetBytes() => [];
         public string GetString() => data;
     }
 
