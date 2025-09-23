@@ -8,6 +8,7 @@ namespace MuThr.DataModels.Components.Output;
 [JsonDerivedType(typeof(FileOutput), typeDiscriminator: "file")]
 [JsonDerivedType(typeof(BinaryPrintOutput), typeDiscriminator: "binary")]
 [JsonDerivedType(typeof(ConcatOutput), typeDiscriminator: "concat")]
+[JsonDerivedType(typeof(LengthPrependOutput), typeDiscriminator: "prepend_length")]
 public interface IOutputComponent
 {
     Task TransformAsync(BuildEnvironment environment, Stream prev, Stream next, IMuThrLogger logger);
