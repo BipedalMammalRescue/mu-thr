@@ -78,7 +78,7 @@ public abstract partial class BuildAction
 
                 // funnel the output to the next file
                 await using FileStream prevOutput = File.OpenRead(outputPath);
-                await using FileStream nextOutput = File.Create(outputPath);
+                await using FileStream nextOutput = File.Create(nextOutputPath);
                 await outputComponent.TransformAsync(environment, prevOutput, nextOutput, logger).ConfigureAwait(false);
 
                 // keep tap and swap
