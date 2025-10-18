@@ -12,7 +12,7 @@ public class ConcatInput : IInputComponent
         // TODO: need to tag these loggers properly
         foreach (IInputComponent src in Sources)
         {
-            await src.TransformAsync(environment, source, destination, logger);
+            await src.TransformAsync(environment, source, destination, logger).ConfigureAwait(false);
         }
     }
 }

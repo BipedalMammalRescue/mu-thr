@@ -12,7 +12,7 @@ public class BinaryPrintInput : IInputComponent
     {
         string sourcePath = environment.ExpandValues(SourcePath);
         string sourcePathFull = environment.GetFullPath(sourcePath);
-        ILeafDataPoint? sourceData = environment.GetDataPoint<ILeafDataPoint>(sourcePath) ?? throw new Exception($"Can't find array at data path {sourcePathFull}");
+        ILeafDataPoint? sourceData = environment.GetDataPoint<ILeafDataPoint>(sourcePath) ?? throw new Exception($"Can't find leaf at data path {sourcePathFull}");
         await destination.WriteAsync(sourceData.GetBytes().ToArray()).ConfigureAwait(false);
     }
 }

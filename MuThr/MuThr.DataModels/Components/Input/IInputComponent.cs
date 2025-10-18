@@ -6,6 +6,7 @@ namespace MuThr.DataModels.Components.Input;
 
 [JsonPolymorphic]
 [JsonDerivedType(typeof(ConcatInput), typeDiscriminator: "concat")]
+[JsonDerivedType(typeof(EnumerateConcatInput), typeDiscriminator: "enum_concat")]
 [JsonDerivedType(typeof(FileInput), typeDiscriminator: "file")]
 [JsonDerivedType(typeof(BinaryPrintInput), typeDiscriminator: "binary")]
 public interface IInputComponent
