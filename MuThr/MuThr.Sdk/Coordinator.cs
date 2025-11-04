@@ -76,7 +76,7 @@ public class Coordinator
     public Coordinator(ITaskProvider taskProvider, IMuThrLogger logger)
     {
         // these are just logging
-        _readyQueue.Subscribe(ready => logger.Information("Task ready: {id}", ready.Task.Id));
+        _readyQueue.Subscribe(ready => logger.Verbose("Task ready: {id}", ready.Task.Id));
 
         // transform requests into scheduling
         IObservable<RequestResponse> responses = _requestQueue
@@ -107,7 +107,7 @@ public class Coordinator
         IObservable<(BuildTask Task, BuildAction[] Children)> taskAndChildren = _scheduleQueue
             .Do(s =>
             {
-                logger.Information("Task scheduled: Key = {key}, Type = {name}, ID = {id}, Parent = {parent}", s.Key, s.Action.GetType().Name, s.Id, s.Parent?.Id);
+                logger.Verbose("Task scheduled: Key = {key}, Type = {name}, ID = {id}, Parent = {parent}", s.Key, s.Action.GetType().Name, s.Id, s.Parent?.Id);
                 logger.Verbose("Task detail: {id}, {detail}", s.Id, JsonSerializer.Serialize(s.Action));
             })
             .Select(t => (t, t.Action.CollectChildren(t.Source, CreateTaskLogger(logger, t)).ToArray()))
@@ -154,7 +154,7 @@ public class Coordinator
             // normal code path
             try
             {
-                logger.Information("Task started: {id}", ready.Task.Id);
+                logger.Verbose("Task started: {id}", ready.Task.Id);
 
                 BuildEnvironment env = new(ready.Task.Source, ready.Children, string.Empty);
                 BuildResult result = await ready.Task.Action.ExecuteAsync(env, CreateTaskLogger(logger, ready.Task)).ConfigureAwait(false);
