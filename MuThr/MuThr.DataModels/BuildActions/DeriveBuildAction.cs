@@ -6,7 +6,7 @@ namespace MuThr.DataModels.BuildActions;
 public class DeriveBuildAction : BuildAction
 {
     public required string SourcePath { get; set; }
-    protected override Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger)
+    public override Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger)
     {
         string sourcePath = environment.ExpandValues(SourcePath);
         string sourcePathFull = environment.GetFullPath(sourcePath);

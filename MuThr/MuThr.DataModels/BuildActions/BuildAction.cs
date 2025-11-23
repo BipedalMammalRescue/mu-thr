@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using MuThr.DataModels.Components.Input;
 using MuThr.DataModels.Components.Output;
 using MuThr.DataModels.Diagnostic;
-using MuThr.DataModels.Schema;
 
 namespace MuThr.DataModels.BuildActions;
 
@@ -11,13 +10,14 @@ namespace MuThr.DataModels.BuildActions;
 [JsonDerivedType(typeof(CommandBuildAction), typeDiscriminator: "command")]
 [JsonDerivedType(typeof(DeriveBuildAction), typeDiscriminator: "derive")]
 [JsonDerivedType(typeof(BypassBuildAction), typeDiscriminator: "bypass")]
+[JsonDerivedType(typeof(EnumerateBuildAction), typeDiscriminator: "enumerate")]
 public abstract partial class BuildAction
 {
-    protected record ProtoBuildResult(ImmutableDictionary<string, string> Tags, BuildError[] Errors, string[] DerivedTasks);
-    protected static ProtoBuildResult Result(Dictionary<string, string> tags) => new(tags.ToImmutableDictionary(), [], []);
-    protected static ProtoBuildResult Derive(params string[] derivedTasks) => new(ImmutableDictionary<string, string>.Empty, [], derivedTasks);
-    protected static ProtoBuildResult Error(params string[] errors) => new(ImmutableDictionary<string, string>.Empty, [.. errors.Select(e => new BuildErrorMessage(e))], []);
-    protected static ProtoBuildResult Error(params Exception[] errors) => new(ImmutableDictionary<string, string>.Empty, [.. errors.Select(e => new BuildException(e))], []);
+    public record ProtoBuildResult(ImmutableDictionary<string, string> Tags, BuildError[] Errors, string[] DerivedTasks);
+    public static ProtoBuildResult Result(Dictionary<string, string> tags) => new(tags.ToImmutableDictionary(), [], []);
+    public static ProtoBuildResult Derive(params string[] derivedTasks) => new(ImmutableDictionary<string, string>.Empty, [], derivedTasks);
+    public static ProtoBuildResult Error(params string[] errors) => new(ImmutableDictionary<string, string>.Empty, [.. errors.Select(e => new BuildErrorMessage(e))], []);
+    public static ProtoBuildResult Error(params Exception[] errors) => new(ImmutableDictionary<string, string>.Empty, [.. errors.Select(e => new BuildException(e))], []);
 
     public BuildAction[] ChildTasks { get; set; } = [];
 
@@ -28,7 +28,7 @@ public abstract partial class BuildAction
     // used to generate extra tags
     public Dictionary<string, string> Tags { get; set; } = [];
 
-    public IEnumerable<BuildAction> CollectChildren(IDataPoint sourceData, IMuThrLogger logger) => [.. ChildTasks, .. GetDynamicChildren(sourceData, logger)];
+    public IEnumerable<BuildAction> CollectChildren(BuildEnvironment environment, IMuThrLogger logger) => [.. ChildTasks, .. GetDynamicChildren(environment, logger)];
 
     public async Task<BuildResult> ExecuteAsync(BuildEnvironment environment, IMuThrLogger logger)
     {
@@ -123,7 +123,7 @@ public abstract partial class BuildAction
     /// <param name="environment">The environment of this task.</param>
     /// <param name="logger"></param>
     /// <returns></returns>
-    protected virtual BuildAction[] GetDynamicChildren(IDataPoint sourceData, IMuThrLogger logger) => [];
+    public virtual BuildAction[] GetDynamicChildren(BuildEnvironment sourceData, IMuThrLogger logger) => [];
 
     /// <summary>
     /// Implement this method for a type of build action. 
@@ -132,5 +132,5 @@ public abstract partial class BuildAction
     /// <param name="output">The initial output of this task.</param>
     /// <param name="environment">Helper functions that's based on part of the input data.</param>
     /// <returns></returns>
-    protected abstract Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger);
+    public abstract Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger);
 }

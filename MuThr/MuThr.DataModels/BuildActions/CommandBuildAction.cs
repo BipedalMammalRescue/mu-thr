@@ -11,7 +11,7 @@ public class CommandBuildAction : BuildAction
     public required string Process { get; set; }
     public required string[] Arguments { get; set; }
 
-    protected override async Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger)
+    public override async Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger)
     {
         logger.Verbose("Setting up builder process.");
         using Process builder = new();
