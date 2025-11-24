@@ -17,7 +17,7 @@ public class Coordinator
 {
     private class InvalidBuildAction : BuildAction
     {
-        protected override Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger)
+        public override Task<ProtoBuildResult> ExecuteCoreAsync(BuildEnvironment environment, Stream input, Stream output, IMuThrLogger logger)
         {
             throw new NotImplementedException();
         }
@@ -110,7 +110,8 @@ public class Coordinator
                 logger.Verbose("Task scheduled: Key = {key}, Type = {name}, ID = {id}, Parent = {parent}", s.Key, s.Action.GetType().Name, s.Id, s.Parent?.Id);
                 logger.Verbose("Task detail: {id}, {detail}", s.Id, JsonSerializer.Serialize(s.Action));
             })
-            .Select(t => (t, t.Action.CollectChildren(t.Source, CreateTaskLogger(logger, t)).ToArray()))
+            // use an empty build environment here since this is before any execution, all there is in the env is source data
+            .Select(t => (t, t.Action.CollectChildren(new BuildEnvironment(t.Source, [], t.PathPrefix), CreateTaskLogger(logger, t)).ToArray()))
             .Publish()
             .AutoConnect();
 
