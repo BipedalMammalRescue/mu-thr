@@ -2,13 +2,13 @@ using MuThr.DataModels.BuildActions;
 using MuThr.DataModels.Diagnostic;
 using MuThr.DataModels.Schema;
 
-namespace MuThr.DataModels.Components.Input;
+namespace MuThr.DataModels.Components;
 
-public class EnumerateConcatInput : IInputComponent
+public class EnumerateComponent : ITransformComponent
 {
     public required string SourcePath { get; set; }
 
-    public required IInputComponent Delegate { get; set; }
+    public required ITransformComponent Delegate { get; set; }
 
     public async Task TransformAsync(BuildEnvironment environment, Stream source, Stream destination, IMuThrLogger logger)
     {

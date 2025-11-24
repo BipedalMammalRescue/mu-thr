@@ -1,9 +1,9 @@
 using MuThr.DataModels.BuildActions;
 using MuThr.DataModels.Diagnostic;
 
-namespace MuThr.DataModels.Components.Output;
+namespace MuThr.DataModels.Components;
 
-public class FileOutput : IOutputComponent
+public class FileComponent : ITransformComponent
 {
     public required string Path { get; set; }
 

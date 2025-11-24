@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using System.Text.Json.Serialization;
-using MuThr.DataModels.Components.Input;
-using MuThr.DataModels.Components.Output;
+using MuThr.DataModels.Components;
 using MuThr.DataModels.Diagnostic;
 
 namespace MuThr.DataModels.BuildActions;
@@ -22,8 +21,8 @@ public abstract partial class BuildAction
     public BuildAction[] ChildTasks { get; set; } = [];
 
     // transforms the input
-    public IInputComponent[] InputComponents { get; set; } = [];
-    public IOutputComponent[] OutputComponents { get; set; } = [];
+    public ITransformComponent[] InputComponents { get; set; } = [];
+    public ITransformComponent[] OutputComponents { get; set; } = [];
 
     // used to generate extra tags
     public Dictionary<string, string> Tags { get; set; } = [];
@@ -39,7 +38,7 @@ public abstract partial class BuildAction
             // transform the input
             logger.Verbose("Transforming input.");
             Stream input = Stream.Null;
-            foreach (IInputComponent inputComponent in InputComponents)
+            foreach (ITransformComponent inputComponent in InputComponents)
             {
                 // make sure every file used for input is automatically collected
                 string tempFile = Path.GetTempFileName();
@@ -71,7 +70,7 @@ public abstract partial class BuildAction
 
             // transform the output
             logger.Verbose("Transforming output.");
-            foreach (IOutputComponent outputComponent in OutputComponents)
+            foreach (ITransformComponent outputComponent in OutputComponents)
             {
                 // get a new file
                 string nextOutputPath = Path.GetTempFileName();

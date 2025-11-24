@@ -1,9 +1,9 @@
 using MuThr.DataModels.BuildActions;
 using MuThr.DataModels.Diagnostic;
 
-namespace MuThr.DataModels.Components.Output;
+namespace MuThr.DataModels.Components;
 
-public class LengthPrependOutput : IOutputComponent
+public class LengthPrependComponent : ITransformComponent
 {
     public async Task TransformAsync(BuildEnvironment environment, Stream prev, Stream next, IMuThrLogger logger)
     {
